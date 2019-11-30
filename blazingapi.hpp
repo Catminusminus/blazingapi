@@ -16,6 +16,11 @@ namespace blazingapi {
     struct function_traits<std::function<R(Args...)>> {
       static const auto nargs = sizeof...(Args);
       using args = std::tuple<Args...>;
+      template <std::size_t I> struct arg {
+        using type = std::tuple_element_t<I, std::tuple<Args...>>;
+      };
+      template <std::size_t I>
+      using arg_t = typename arg<I>::type;
     };
 
     template <class Function> 
@@ -23,10 +28,6 @@ namespace blazingapi {
       std::function func_(std::forward<Function>(func));
       return func_;
     }
-
-    constexpr auto get_number_of_args = [](auto&& func) {
-      return function_traits<decltype(make_function(std::forward<decltype(func)>(func)))>::nargs;
-    };
 
     template <class T>
     auto to_string(const T& x) {
@@ -55,11 +56,22 @@ namespace blazingapi {
           //bad
           if constexpr(detail::function_traits<decltype(detail::make_function(f))>::nargs == 0) {
             res.set_content(detail::to_string(std::invoke(f)), "application/json");
+          } else if constexpr(detail::function_traits<decltype(detail::make_function(f))>::nargs == 1) {
+            using arg = typename detail::function_traits<decltype(detail::make_function(f))>::template arg_t<0>;
+            if constexpr(!std::is_same_v<arg, QueryParams>) {
+              PathParams path_params_;
+              for (std::size_t i = 1, n = req.matches.size(); i < n; ++i)
+                path_params_.emplace_back(req.matches.str(i));
+              res.set_content(detail::to_string(std::invoke(f, path_params_)), "application/json");
+            } else {
+              [&]{
+                res.set_content(detail::to_string(std::invoke(f, req.params)), "application/json");
+              }();
+            }
           } else {
             PathParams path_params;
             for (std::size_t i = 1, n = req.matches.size(); i < n; ++i)
               path_params.emplace_back(req.matches.str(i));
-
             res.set_content(detail::to_string(std::invoke(f, path_params, req.params)), "application/json");
           }
         };
