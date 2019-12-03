@@ -3,6 +3,7 @@
 
 int main() {
   using namespace blazingapi;
+  using json = nlohmann::json;
 
   auto server = BlazingAPI();
   server.Get("/hi") = [] { return R"({"hello":"world"})"; };
@@ -11,20 +12,17 @@ int main() {
     auto number1_stream = std::istringstream(number1_str);
     int number1;
     number1_stream >> number1;
-    using json = nlohmann::json;
     json j;
     j["number1"] = number1;
     return j;
   };
   server.Get(R"(/ho/(\d+))") = [](int path_param) {
-    using json = nlohmann::json;
     json j;
     j["number"] = path_param;
     return j;
   };
   server.Get(R"(/hoho/(\d+)/(\d+))") = [](int path_param_int,
                                           float path_param_float) {
-    using json = nlohmann::json;
     json j;
     j["int_num"] = path_param_int;
     j["float_num"] = path_param_float;
@@ -32,7 +30,6 @@ int main() {
   };
   server.Get(R"(/yoho/(\d+))") = [](int path_param,
                                     const QueryParams &query_params) {
-    using json = nlohmann::json;
     json j;
     j["p"] = (query_params.find("p")->second);
     j["number"] = path_param;
@@ -41,7 +38,6 @@ int main() {
   server.Get(R"(/numbers/(\d+)/numbers/(\d+))") =
       [](const PathParams &path_params, const QueryParams &query_params) {
         const auto number1 = path_params.at(0);
-        using json = nlohmann::json;
         json j;
         j["p"] = (query_params.find("p")->second);
         j["number1"] = number1;
