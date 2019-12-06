@@ -1,5 +1,6 @@
 #include "httplib.h"
 #include "nlohmann/json.hpp"
+#include "refl.hpp"
 #include "spdlog/spdlog.h"
 #include <functional>
 #include <sstream>
@@ -7,9 +8,23 @@
 #include <utility>
 #include <vector>
 
+namespace blazingapi::ns {
+using json = nlohmann::json;
+template <class T> auto from_json(const json &j, T &p) {
+  refl::util::for_each(refl::reflect(p).members, [&](auto member) {
+    j.at(member.name.c_str()).get_to(member(p));
+  });
+}
+} // namespace blazingapi::ns
+
 namespace blazingapi {
 using QueryParams = httplib::Params;
 using PathParams = std::vector<std::string>;
+
+struct RequestBody {};
+} // namespace blazingapi
+
+namespace blazingapi {
 
 namespace detail {
 template <typename T> struct function_traits;
@@ -58,8 +73,8 @@ template <class... Args> struct ContentMaker {};
 
 template <> struct ContentMaker<std::tuple<>> {
   template <class F>
-  static constexpr auto set_content(const httplib::Request &req,
-                                    httplib::Response &res, F &&f) {
+  static auto set_content(const httplib::Request &req, httplib::Response &res,
+                          F &&f) {
     res.set_content(detail::to_string(std::invoke(std::forward<F>(f))),
                     "application/json");
   }
@@ -67,8 +82,8 @@ template <> struct ContentMaker<std::tuple<>> {
 
 template <> struct ContentMaker<std::tuple<PathParams>> {
   template <class F>
-  static constexpr auto set_content(const httplib::Request &req,
-                                    httplib::Response &res, F &&f) {
+  static auto set_content(const httplib::Request &req, httplib::Response &res,
+                          F &&f) {
     PathParams path_params;
     for (std::size_t i = 1, n = req.matches.size(); i < n; ++i)
       path_params.emplace_back(req.matches.str(i));
@@ -80,8 +95,8 @@ template <> struct ContentMaker<std::tuple<PathParams>> {
 
 template <> struct ContentMaker<std::tuple<QueryParams>> {
   template <class F>
-  static constexpr auto set_content(const httplib::Request &req,
-                                    httplib::Response &res, F &&f) {
+  static auto set_content(const httplib::Request &req, httplib::Response &res,
+                          F &&f) {
     res.set_content(
         detail::to_string(std::invoke(std::forward<F>(f), req.params)),
         "application/json");
@@ -90,8 +105,8 @@ template <> struct ContentMaker<std::tuple<QueryParams>> {
 
 template <> struct ContentMaker<std::tuple<PathParams, QueryParams>> {
   template <class F>
-  static constexpr auto set_content(const httplib::Request &req,
-                                    httplib::Response &res, F &&f) {
+  static auto set_content(const httplib::Request &req, httplib::Response &res,
+                          F &&f) {
     PathParams path_params;
     for (std::size_t i = 1, n = req.matches.size(); i < n; ++i)
       path_params.emplace_back(req.matches.str(i));
@@ -113,10 +128,30 @@ template <class Tuple> struct ArgHelper {
   }
 };
 
+template <class T> struct ContentMaker<std::tuple<T>> {
+  template <class F>
+  static auto set_content(const httplib::Request &req, httplib::Response &res,
+                          F &&f) {
+    if constexpr (std::is_base_of_v<RequestBody, T>) {
+      auto body_j = nlohmann::json::parse(req.body);
+      auto body = body_j.get<T>();
+      res.set_content(detail::to_string(std::invoke(std::forward<F>(f), body)),
+                      "application/json");
+    } else {
+      res.set_content(
+          detail::to_string(std::invoke(
+              std::forward<F>(f),
+              ArgHelper<std::tuple<T>>::template get_transformed_path_arg<0>(
+                  req))),
+          "application/json");
+    }
+  }
+};
+
 template <class... Args> struct ContentMaker<std::tuple<Args...>> {
   template <class F>
-  static constexpr auto set_content(const httplib::Request &req,
-                                    httplib::Response &res, F &&f) {
+  static auto set_content(const httplib::Request &req, httplib::Response &res,
+                          F &&f) {
     constexpr auto nargs = sizeof...(Args);
     using last_type = std::tuple_element_t<nargs - 1, std::tuple<Args...>>;
     if constexpr (std::is_same_v<last_type, QueryParams>) {
@@ -143,7 +178,6 @@ template <class... Args> struct ContentMaker<std::tuple<Args...>> {
     }
   }
 };
-
 } // namespace detail
 class BlazingAPI {
   httplib::Server internal_server;
@@ -164,9 +198,14 @@ private:
     template <class F> auto operator=(F &&f) {
       auto return_json = [&f](const httplib::Request &req,
                               httplib::Response &res) {
-        detail::ContentMaker<
-            typename detail::function_traits<decltype(detail::make_function(
-                f))>::decayed_args>::set_content(req, res, std::forward<F>(f));
+        try {
+          detail::ContentMaker<
+              typename detail::function_traits<decltype(detail::make_function(
+                  f))>::decayed_args>::set_content(req, res,
+                                                   std::forward<F>(f));
+        } catch (...) {
+          res.status = 500;
+        }
       };
       std::invoke(method, server, url.c_str(), std::move(return_json));
     }
@@ -193,7 +232,11 @@ public:
   decltype(auto) Get(const std::string &url) {
     return BlazingAPIInternal(internal_server, &httplib::Server::Get, url);
   }
-  decltype(auto) Post(const std::string &url) {}
+  decltype(auto) Post(const std::string &url) {
+    auto (httplib::Server::*pPost)(const char *, httplib::Server::Handler) =
+        &httplib::Server::Post;
+    return BlazingAPIInternal(internal_server, pPost, url);
+  }
   decltype(auto) Put(const std::string &url) {}
   decltype(auto) Delete(const std::string &url) {
     return BlazingAPIInternal(internal_server, &httplib::Server::Delete, url);

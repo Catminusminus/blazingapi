@@ -1,6 +1,16 @@
 #include "blazingapi.hpp"
 #include <sstream>
 
+namespace blazingapi::ns {
+struct Item : public blazingapi::RequestBody {
+  int id;
+  double num;
+  std::string description;
+};
+} // namespace blazingapi::ns
+
+REFL_AUTO(type(blazingapi::ns::Item), field(id), field(num), field(description))
+
 int main() {
   using namespace blazingapi;
   using json = nlohmann::json;
@@ -44,6 +54,11 @@ int main() {
         return j;
       };
   server.Delete("/delete") = [] { return R"({"msg": "ok"})"; };
+  server.Post("/post") = [](ns::Item item) {
+    json j;
+    j["id"] = item.id;
+    return j;
+  };
   server.run(1234);
 }
 
@@ -52,6 +67,7 @@ int main() {
 // curl -v "http://localhost:1234/ho/5" => {"number":5}
 // curl -v "http://localhost:1234/hoho/5/10" => {"float_num":10.0,"int_num":5}
 // curl -v "http://localhost:1234/yoho/5?p=aaaa" => {"number":5,"p":"aaaa"}
-// curl -v "http://localhost:1234/numbers/5/numbers/6?q=aaaa&p=bbbb&r=cccc" => {"number1":"5","p":"bbbb"}
-// curl -v "http://localhost:1234/nonexist" => {"detail":"Not Found"} 
-// curl -X DELETE -v "http://localhost:1234/delete" => {"msg": "ok"}
+// curl -v "http://localhost:1234/numbers/5/numbers/6?q=aaaa&p=bbbb&r=cccc" =>
+// {"number1":"5","p":"bbbb"} curl -v "http://localhost:1234/nonexist" =>
+// {"detail":"Not Found"} curl -X DELETE -v "http://localhost:1234/delete" =>
+// {"msg": "ok"}
