@@ -63,6 +63,7 @@ int main() {
   };
 
   server.run(1234);
+  // curl -X POST -v -d '{"id": 1, "num": 1.0, "descriptionnnnn": "hi"}' "http://localhost:1234/post" => {"detail":"Bad Request"}
 }
 ```
 
