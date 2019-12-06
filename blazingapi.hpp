@@ -133,10 +133,15 @@ template <class T> struct ContentMaker<std::tuple<T>> {
   static auto set_content(const httplib::Request &req, httplib::Response &res,
                           F &&f) {
     if constexpr (std::is_base_of_v<RequestBody, T>) {
-      auto body_j = nlohmann::json::parse(req.body);
-      auto body = body_j.get<T>();
-      res.set_content(detail::to_string(std::invoke(std::forward<F>(f), body)),
-                      "application/json");
+      try {
+        auto body_j = nlohmann::json::parse(req.body);
+        auto body = body_j.get<T>();
+        res.set_content(
+            detail::to_string(std::invoke(std::forward<F>(f), body)),
+            "application/json");
+      } catch (...) {
+        res.status = 400;
+      }
     } else {
       res.set_content(
           detail::to_string(std::invoke(
@@ -215,9 +220,18 @@ public:
   BlazingAPI() {
     internal_server.set_error_handler([](const httplib::Request & /*req*/,
                                          httplib::Response &res) {
-      if (res.status == 404) {
+      switch (res.status) {
+      case 400:
+        res.set_content(R"({"detail":"Bad Request"})", "application/json");
+        break;
+      case 404:
         res.set_content(R"({"detail":"Not Found"})", "application/json");
-      } else {
+        break;
+      case 422:
+        res.set_content(R"({"detail":"Unprocessable Entity"})",
+                        "application/json");
+        break;
+      default:
         res.set_content(R"({"detail":"Something Wrong"})", "application/json");
       }
     });
