@@ -3,10 +3,18 @@
 #include "refl.hpp"
 #include "spdlog/spdlog.h"
 #include <functional>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
+
+#ifdef _WIN32
+#include <process.h>
+#define msleep(n) ::Sleep(n)
+#else
+#define msleep(n) ::usleep(n * 1000)
+#endif
 
 namespace blazingapi::ns {
 using json = nlohmann::json;
@@ -201,8 +209,8 @@ private:
                        const std::string_view url)
         : server(server), method(method), url(url) {}
     template <class F> auto operator=(F &&f) {
-      auto return_json = [&f](const httplib::Request &req,
-                              httplib::Response &res) {
+      auto return_json = [&f, this](const httplib::Request &req,
+                                    httplib::Response &res) {
         try {
           detail::ContentMaker<
               typename detail::function_traits<decltype(detail::make_function(
@@ -258,5 +266,33 @@ public:
   auto run(unsigned int port_number) {
     internal_server.listen("localhost", port_number);
   }
+  auto stop() { internal_server.stop(); }
+};
+} // namespace blazingapi
+
+namespace blazingapi {
+template <class Server> class TestClient {
+  Server &server_being_tested;
+  unsigned int port_number;
+
+public:
+  TestClient(Server &server_being_tested)
+      : server_being_tested(server_being_tested) {}
+  auto Get(const std::string &url) {
+    httplib::Client test_client("localhost", port_number);
+    auto httpThread = std::thread([&]() { server_being_tested.run(8080); });
+    msleep(1);
+    auto response = test_client.Get(url.c_str());
+    server_being_tested.stop();
+    httpThread.join();
+    return response;
+  }
+  auto Post(const std::string &url) {}
+  auto Put(const std::string &url) {}
+  auto Delete(const std::string &url) {
+    httplib::Client test_client("localhost", port_number);
+    return test_client.Delete(url.c_str());
+  }
+  auto run(unsigned int port_number_) { port_number = port_number_; }
 };
 } // namespace blazingapi
