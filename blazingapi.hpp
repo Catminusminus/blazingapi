@@ -276,11 +276,12 @@ template <class Server> class TestClient {
   unsigned int port_number;
 
 public:
-  TestClient(Server &server_being_tested)
-      : server_being_tested(server_being_tested) {}
+  TestClient(Server &server_being_tested, unsigned int port_number)
+      : server_being_tested(server_being_tested), port_number(port_number) {}
   auto Get(const std::string &url) {
     httplib::Client test_client("localhost", port_number);
-    auto httpThread = std::thread([&]() { server_being_tested.run(8080); });
+    auto httpThread =
+        std::thread([&]() { server_being_tested.run(port_number); });
     msleep(1);
     auto response = test_client.Get(url.c_str());
     server_being_tested.stop();
@@ -293,6 +294,5 @@ public:
     httplib::Client test_client("localhost", port_number);
     return test_client.Delete(url.c_str());
   }
-  auto run(unsigned int port_number_) { port_number = port_number_; }
 };
 } // namespace blazingapi

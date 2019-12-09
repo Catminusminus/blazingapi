@@ -76,3 +76,27 @@ git clone https://github.com/veselink1/refl-cpp.git
 
 g++ -o api -std=c++17 -I./spdlog/include -I./cpp-httplib -I./json/single_include -I./refl-cpp -Wall -Wextra -pthread api.cpp -DCPPHTTPLIB_OPENSSL_SUPPORT -I/usr/local/opt/openssl/include -L/usr/local/opt/openssl/lib -lssl -lcrypto -DCPPHTTPLIB_ZLIB_SUPPORT -lz
 ```
+
+## Test with [boost::ut](https://github.com/boost-experimental/ut)
+```cpp
+int main() {
+  using namespace blazingapi;
+  using namespace boost::ut;
+  "get(/hi) will be ok"_test = [] {
+    auto server = BlazingAPI();
+    server.Get("/hi") = [] { return R"({"hello":"world"})"; };
+    auto client = TestClient(server, 8080);
+    auto response = client.Get("/hi");
+    expect(response->status == 200_i);
+  };
+}
+
+```
+In order to run the above test code, you need boost::ut. So run
+```
+git clone https://github.com/boost-experimental/ut.git
+```
+then
+```
+g++ -o test -std=c++17 -I./spdlog/include -I./cpp-httplib -I./json/single_include -Wall -Wextra -pthread test.cpp -DCPPHTTPLIB_OPENSSL_SUPPORT -I/usr/local/opt/openssl/include -I./refl-cpp -I./ut/include -L/usr/local/opt/openssl/lib -lssl -lcrypto -DCPPHTTPLIB_ZLIB_SUPPORT -lz
+```
